@@ -32,6 +32,7 @@ class OpenAIProvider(EmbeddingProvider):
         self._base_url = settings.openai_embedding_url.rstrip("/")
         self._api_key = settings.openai_api_key
         self._client: httpx.AsyncClient | None = None
+        self._ready = False
 
     async def startup(self) -> None:
         self._client = httpx.AsyncClient(
@@ -39,6 +40,7 @@ class OpenAIProvider(EmbeddingProvider):
             headers={"Authorization": f"Bearer {self._api_key}"},
             timeout=60.0,
         )
+        self._ready = True
         logger.info(
             "OpenAIProvider ready: %s, model=%s", self._base_url, self._model_name
         )
@@ -77,3 +79,7 @@ class OpenAIProvider(EmbeddingProvider):
 
     def dimension(self) -> int:
         return self._dim
+
+    @property
+    def is_ready(self) -> bool:
+        return self._ready

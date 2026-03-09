@@ -299,12 +299,22 @@ class CapabilityStore:
 
     def _count_by_service_sync(self) -> dict[str, int]:
         col = self._require_collection()
-        # Query all entries — just need the service_name from metadata
+        # Query all entries — just need the service_name from metadata.
+        # Limit is set well above any realistic registry size; log a warning
+        # if we're approaching it so an operator knows to raise it.
+        query_limit = 16384
         results = col.query(
             expr="id != ''",
             output_fields=["metadata"],
-            limit=16384,  # practical max for a registry
+            limit=query_limit,
         )
+        if len(results) >= query_limit:
+            logger.warning(
+                "count_by_service hit query limit (%d) — counts may be truncated. "
+                "Consider raising the limit if the registry has grown beyond %d entries.",
+                query_limit,
+                query_limit,
+            )
         counts: dict[str, int] = {}
         for r in results:
             svc = (r.get("metadata") or {}).get("service_name", "unknown")
