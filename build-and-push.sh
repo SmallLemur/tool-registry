@@ -24,7 +24,7 @@ TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
 echo "${GITLAB_TOKEN}" | docker login registry.gitlab.com -u "${GITLAB_USER}" --password-stdin
 
-docker build --platform linux/amd64 \
+docker build --no-cache --platform linux/amd64 \
     -t "${IMAGE}:latest" \
     -t "${IMAGE}:${TIMESTAMP}" \
     -f Dockerfile .
