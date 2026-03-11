@@ -1,31 +1,57 @@
 # Tool Registry
 
-A semantic capability index for microservices. Services register their
-capabilities; clients search by natural-language intent.
+A semantic capability index for microservices — Tool RAG in a box.
 
-Services describe what they can do (actions, schemas, descriptions). The
-registry embeds those descriptions as vectors in Milvus. At query time,
-Cortex — or any client — sends a natural-language intent and gets back the
-top-N most relevant capabilities, fully specified and ready to use.
+Services register their capabilities; clients search by natural-language
+intent and get back only the relevant tools, fully specified and ready to use.
+
+## Background: why Tool RAG?
+
+LLM-based agents that integrate tools typically inject all tool definitions
+into the system prompt. This works with 5–10 tools but breaks down as the
+number grows. A service ecosystem with 100+ capabilities consumes thousands
+of tokens of context on every call — most of them irrelevant to the current
+request. Selection accuracy degrades, latency increases, and inference cost
+scales linearly with tool count.
+
+Tool RAG applies the same principle as retrieval-augmented generation to tool
+discovery: index capabilities as vectors, retrieve only the semantically
+relevant ones for a given intent, and inject only those into the model context.
+The cost and context usage stay constant regardless of how many tools exist.
+
+**The AWS benchmark on this pattern is striking:** with 422 tools, vector-based
+selection achieved 82.3% accuracy versus 75.8% when all tools were included —
+giving the model *fewer* tools made it *more* accurate. It also reduced latency
+by 21% and cut inference cost by 92%.
+
+This happens because LLMs are better at choosing from a curated shortlist than
+searching a haystack. Irrelevant tool definitions create noise that degrades
+decision quality.
 
 ## How it works
 
 ```
 Service starts
     → POSTs ServiceManifest to /api/v1/register (or announces via RabbitMQ)
-    → Registry embeds each action's description
+    → Registry embeds each action's description as a vector
     → Vectors stored in Milvus
 
 Client queries
     → POST /api/v1/search {"query": "search the web for recent news"}
     → Registry embeds query, searches Milvus by cosine similarity
     → Returns top-N capabilities with full schemas
+    → (Optional) LLM reranker refines the ranking for higher precision
 ```
 
-Heartbeat deduplication: if a service re-registers with the same manifest
-(same SHA-256 fingerprint), the registry skips re-embedding and just updates
-`last_seen`. Services can safely call `/api/v1/register` on a schedule
-without causing unnecessary Milvus writes.
+**Heartbeat deduplication:** if a service re-registers with an unchanged
+manifest (same SHA-256 fingerprint), the registry skips re-embedding and just
+updates `last_seen`. Services can call `/api/v1/register` on a schedule without
+causing unnecessary Milvus writes.
+
+**Enriched embeddings:** the registry builds composite search text from the
+service context, action description, and parameter names — not just the action
+name. This significantly improves retrieval quality for queries like "I'm
+hungry" that don't literally match "order food delivery".
 
 ## Stack
 
@@ -124,9 +150,9 @@ collection manually or point to a new collection name.
 #### `rabbitmq_listener` (default)
 
 Services publish their manifest to a RabbitMQ fanout exchange on startup.
-The registry subscribes to that exchange and auto-registers services as they
-appear. No configuration needed on the service side beyond their existing
-RabbitMQ announce behaviour.
+The registry subscribes and auto-registers services as they appear. No
+configuration needed on the service side beyond their existing announce
+behaviour.
 
 #### `http_push`
 
@@ -156,8 +182,11 @@ Or provide an explicit `health_url` to override the derived URL.
 
 ### LLM reranker (optional)
 
-Disabled by default. When enabled, a second LLM pass reranks vector search
-results by relevance, improving precision for ambiguous queries.
+Disabled by default. When enabled, a second LLM pass reranks the vector
+search results for improved precision — vector similarity captures semantic
+proximity but can miss functional relevance. The reranker uses structured
+output (JSON schema) to guarantee a valid response without fragile text
+extraction.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -168,9 +197,10 @@ results by relevance, improving precision for ambiguous queries.
 | `RERANKER_API_KEY` | _(empty)_ | Bearer token (openai_compatible only) |
 | `RERANKER_OLLAMA_URL` | `http://ollama:11434` | Ollama base URL (ollama only) |
 
-The reranker requires a model that supports structured output (`response_format`
-with JSON schema for OpenAI-compatible, `format` parameter for Ollama). Use a
-small fast model — it only needs to return a ranked list of integers.
+The reranker requires a model with structured output support
+(`response_format` with JSON schema for OpenAI-compatible endpoints,
+`format` parameter for Ollama). A small, fast model is sufficient — it
+only needs to return a ranked list of integers.
 
 ## API
 
@@ -215,7 +245,35 @@ Interactive docs available at `http://localhost:8014/docs`.
 
 The `description` field on each action is the primary text embedded for
 search. Write it as a natural-language sentence describing what the action
-does and when you'd use it — not just the action name.
+does and when you'd use it — not just the action name. The quality of
+retrieval is directly proportional to the quality of these descriptions.
+
+## Research
+
+The Tool RAG pattern is well-supported by recent research:
+
+- **AWS S3 Vectors + Bedrock** (2025) — Production benchmark with 422 tools:
+  vector selection achieved 82.3% accuracy, 91.9% recall, 21% lower latency,
+  and 92% cost reduction versus the all-tools baseline.
+  [AWS Blog](https://aws.amazon.com/blogs/storage/optimize-agent-tool-selection-using-s3-vectors-and-bedrock-knowledge-bases/)
+
+- **ToolScope** (Ma et al., Oct 2025) — Addresses redundant and overlapping
+  tool descriptions with automatic merging and context-aware filtering.
+  Demonstrated 8–39% gains in tool selection accuracy across multiple LLMs.
+  [ResearchGate](https://www.researchgate.net/publication/396848010)
+
+- **Tool-to-Agent Retrieval** (Li et al., Nov 2025) — Embeds tools and their
+  parent agents in a shared vector space. 19.4% improvement in Recall@5 on
+  LiveMCPBench.
+  [arXiv:2511.01854](https://arxiv.org/abs/2511.01854)
+
+- **ToolReAGt** (ACL KnowLLM Workshop, Aug 2025) — ReAct-style prompting for
+  iterative tool retrieval across complex multi-step tasks from large tool pools.
+  [ACL Anthology](https://aclanthology.org/2025.knowllm-1.7/)
+
+- **Tool RAG** (Red Hat, Nov 2025) — Enterprise framework showing intelligent
+  tool retrieval can triple invocation accuracy while halving prompt length.
+  [Red Hat Emerging Technologies](https://next.redhat.com/2025/11/26/tool-rag-the-next-breakthrough-in-scalable-ai-agents/)
 
 ## Building
 
@@ -228,7 +286,6 @@ uvicorn app.main:app --host 0.0.0.0 --port 8014 --reload
 
 # Build Docker image
 docker build -t tool-registry .
-
 ```
 
 ## License
