@@ -44,6 +44,18 @@ class ServiceManifest(BaseModel):
     actions: list[ActionDef] = Field(default_factory=list)
     stimuli: list[StimulusDef] = Field(default_factory=list)
     suggested_permission: str = "delegated"
+    # Used by the HTTP push plugin for outbound health polling.
+    # If provided, the registry will poll this URL to detect stale services.
+    base_url: str | None = Field(
+        default=None,
+        description="Base URL of this service (e.g. http://web-search:8020). "
+        "Used to derive a health check URL for outbound polling.",
+    )
+    health_url: str | None = Field(
+        default=None,
+        description="Explicit health check URL override "
+        "(e.g. http://web-search:8020/api/v1/health).",
+    )
 
 
 # -- Endpoints ----
@@ -59,11 +71,16 @@ async def register(manifest: ServiceManifest, request: Request) -> dict:
     On heartbeat (same manifest fingerprint), skips embedding and only
     updates last_seen — making this endpoint safe to call every 60 seconds.
 
+    When REGISTRATION_PLUGIN=http_push, this endpoint is also the heartbeat
+    mechanism: services POST their manifest periodically and the fingerprint
+    check determines whether to re-index or just update last_seen.
+
     Returns: {"service": name, "registered": N, "action": "indexed"|"heartbeat"}
     """
     registry = _require_registry(request)
+    manifest_dict = manifest.model_dump()
     try:
-        result = await registry.register(manifest.model_dump())
+        result = await registry.register(manifest_dict)
         logger.info(
             "Register: %s v%s → %s (%d capabilities)",
             manifest.name,
@@ -71,6 +88,16 @@ async def register(manifest: ServiceManifest, request: Request) -> dict:
             result["action"],
             result["registered"],
         )
+        # If the HTTP push plugin is active, register the health URL so the
+        # outbound poller knows where to check this service.
+        plugin = getattr(request.app.state, "registration_plugin", None)
+        if plugin is not None:
+            from app.registration.http_push import HttpPushPlugin, derive_health_url
+
+            if isinstance(plugin, HttpPushPlugin):
+                health_url = derive_health_url(manifest_dict)
+                if health_url:
+                    plugin.register_service_url(manifest.name, health_url)
         return result
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -93,6 +120,13 @@ async def deregister(service_name: str, request: Request) -> dict:
             service_name,
             result["removed"],
         )
+        # Remove from HTTP push poller if active
+        plugin = getattr(request.app.state, "registration_plugin", None)
+        if plugin is not None:
+            from app.registration.http_push import HttpPushPlugin
+
+            if isinstance(plugin, HttpPushPlugin):
+                plugin.deregister_service_url(service_name)
         return result
     except Exception:
         logger.exception("Deregister failed for service: %s", service_name)

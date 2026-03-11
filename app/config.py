@@ -44,6 +44,10 @@ class RegistrySettings(BaseSettings):
     # RabbitMQ (used by rabbitmq_listener plugin)
     rabbitmq_url: str = "amqp://pensante:pensante@pensante-rabbitmq:5672/"
 
+    # HTTP push plugin — outbound health polling
+    http_heartbeat_interval_s: int = 60  # seconds between polling rounds
+    http_heartbeat_timeout_s: int = 10  # per-request timeout
+
     # -- Search tuning ----
     search_default_limit: int = 5
     search_default_threshold: float = 0.5
@@ -54,9 +58,15 @@ class RegistrySettings(BaseSettings):
 
     # -- LLM Reranker (optional) ----
     reranker_enabled: bool = False
+    # Which reranker backend: openai_compatible | ollama
+    reranker_provider: str = "openai_compatible"
+    # OpenAI-compatible backend (OpenRouter, vLLM, etc.)
     reranker_llm_url: str = "https://openrouter.ai/api/v1"
-    reranker_model: str = "google/gemini-2.0-flash-001"
     reranker_api_key: str = ""
+    # Ollama backend
+    reranker_ollama_url: str = "http://ollama:11434"
+    # Model name used by whichever provider is active
+    reranker_model: str = "google/gemini-2.0-flash-001"
 
     model_config = {"env_prefix": "", "case_sensitive": False}
 

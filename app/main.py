@@ -58,9 +58,9 @@ async def lifespan(app: FastAPI):
     capability_store = CapabilityStore(embedding_dim=embedding_provider.dimension())
     try:
         await capability_store.connect()
-        logger.info("Milvus connected: collection=%s", settings.milvus_collection)
+        # connect() runs migrations — collection is created/validated there
     except RuntimeError as e:
-        # Dimension mismatch — fatal, log clearly and let container restart
+        # Dimension mismatch or fatal migration error — log clearly and let container restart
         logger.critical("FATAL: %s", e)
         raise
     except Exception:
@@ -80,16 +80,18 @@ async def lifespan(app: FastAPI):
     reranker = None
     if settings.reranker_enabled:
         try:
-            from app.reranker.llm_reranker import LLMReranker
+            from app.reranker.factory import create_reranker
 
-            reranker = LLMReranker()
+            reranker = create_reranker()
             logger.info(
-                "LLM reranker enabled: %s @ %s",
+                "Reranker enabled: provider=%s model=%s",
+                settings.reranker_provider,
                 settings.reranker_model,
-                settings.reranker_llm_url,
             )
         except Exception:
-            logger.warning("LLM reranker failed to initialize — reranking disabled")
+            logger.warning(
+                "Reranker failed to initialize — reranking disabled", exc_info=True
+            )
     app.state.reranker = reranker
 
     # -- Registration plugin ----
