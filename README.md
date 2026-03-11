@@ -229,8 +229,6 @@ uvicorn app.main:app --host 0.0.0.0 --port 8014 --reload
 # Build Docker image
 docker build -t tool-registry .
 
-# Build and push to your registry
-TOOL_REGISTRY_IMAGE=registry.example.com/you/tool-registry ./build-and-push.sh
 ```
 
 ## License
