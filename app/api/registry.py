@@ -16,8 +16,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1")
 
 
-# -- Pydantic models (mirrors pensante-service-base ServiceManifest) ----
-# Declared locally so tool-registry stays standalone (no pensante-common dep).
+# -- Pydantic models ----
+# ServiceManifest declared locally — tool-registry has no dependency on any
+# specific service framework. Any service that speaks this schema can register.
 
 
 class ActionDef(BaseModel):

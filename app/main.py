@@ -1,4 +1,4 @@
-"""Tool Registry — Semantic capability index for Pensante services.
+"""Tool Registry — Semantic capability index for microservices.
 
 FastAPI application with lifespan-managed startup/shutdown.
 
@@ -9,7 +9,7 @@ Architecture:
   - RegistrationPlugin: auto-discovery via RabbitMQ or HTTP push
 
 Auto-discovery workflow:
-  Services announce via RabbitMQ pensante.announce (fanout exchange).
+  Services announce their manifest via RabbitMQ fanout exchange (or HTTP POST).
   RabbitMQListenerPlugin receives manifests and calls registry.register().
   Fingerprint deduplication skips re-embedding on heartbeat (unchanged manifest).
   Changed manifest (service redeployed) triggers full re-index.
@@ -143,10 +143,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Pensante Tool Registry",
+    title="Tool Registry",
     description=(
-        "Semantic capability index for Pensante services. "
-        "Services auto-discover via RabbitMQ; Cortex queries for top-N relevant capabilities."
+        "Semantic capability index for microservices. "
+        "Services register their capabilities; clients search by natural-language intent."
     ),
     version=VERSION,
     lifespan=lifespan,

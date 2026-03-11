@@ -1,0 +1,91 @@
+# Tool Registry CI/CD
+#
+# Stages:
+#   lint  — syntax-check all Python files (fast, no deps)
+#   build — verify the Docker image builds successfully
+#   push  — tag and push to the GitLab container registry (main branch only)
+#
+# Requires a self-hosted runner with the Docker executor and Docker-in-Docker
+# service enabled. Register a runner with:
+#   gitlab-runner register --executor docker --docker-image docker:27
+#
+# CI variables used (all injected automatically by GitLab):
+#   CI_REGISTRY           — registry.gitlab.com
+#   CI_REGISTRY_IMAGE     — registry.gitlab.com/<namespace>/<project>
+#   CI_REGISTRY_USER      — gitlab-ci-token
+#   CI_REGISTRY_PASSWORD  — job token (scoped to this pipeline)
+#   CI_COMMIT_SHORT_SHA   — short git SHA for image tagging
+#   CI_COMMIT_REF_NAME    — branch/tag name
+
+image: python:3.12-slim
+
+stages:
+  - lint
+  - build
+  - push
+
+# -- Lint ---------------------------------------------------------------
+
+lint:python:
+  stage: lint
+  script:
+    - |
+      echo "Syntax-checking all Python files..."
+      find app -name "*.py" | xargs python -m py_compile
+      echo "All files OK"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+# -- Build --------------------------------------------------------------
+
+build:docker:
+  stage: build
+  image: docker:27
+  services:
+    - docker:27-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+    # Build for the host platform in CI (amd64 via the runner).
+    # Cross-platform linux/amd64 builds for deployment use build-and-push.sh.
+    DOCKER_BUILDKIT: "1"
+  before_script:
+    - docker info
+  script:
+    - |
+      echo "Building Docker image..."
+      docker build \
+        --cache-from "${CI_REGISTRY_IMAGE}:latest" \
+        -t "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}" \
+        -f Dockerfile .
+      echo "Build successful: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+# -- Push ---------------------------------------------------------------
+# Only runs on the main branch after a successful build.
+
+push:registry:
+  stage: push
+  image: docker:27
+  services:
+    - docker:27-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_BUILDKIT: "1"
+  before_script:
+    - echo "${CI_REGISTRY_PASSWORD}" | docker login "${CI_REGISTRY}" -u "${CI_REGISTRY_USER}" --password-stdin
+  script:
+    - |
+      echo "Building and pushing image..."
+      docker build \
+        --cache-from "${CI_REGISTRY_IMAGE}:latest" \
+        -t "${CI_REGISTRY_IMAGE}:latest" \
+        -t "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}" \
+        -f Dockerfile .
+      docker push "${CI_REGISTRY_IMAGE}:latest"
+      docker push "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}"
+      echo "Pushed: ${CI_REGISTRY_IMAGE}:latest and :${CI_COMMIT_SHORT_SHA}"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'

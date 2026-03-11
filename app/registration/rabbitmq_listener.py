@@ -1,21 +1,18 @@
 """RabbitMQ listener registration plugin.
 
-Listens on the same 'pensante.announce' fanout exchange that Sensorium uses.
+Listens on a configurable fanout exchange for service manifest announcements.
 When a service announces its manifest, auto-registers it with the registry.
 
-This is the recommended plugin for the Pensante stack — it provides zero-config
-auto-discovery: services don't need to know the registry URL, they just announce
-via RabbitMQ as they always did.
+Provides zero-config auto-discovery: services don't need to know the registry
+URL, they just publish their ServiceManifest JSON to the announce exchange.
+All subscribers (including this registry) receive every message (fanout).
 
-Both Sensorium AND the registry can consume from the same exchange simultaneously
-(fanout = all subscribers get every message).
-
-Exchange topology (matches pensante-service-base/pensante_service/connection.py):
-  Exchange: pensante.announce (FANOUT, durable)
+Exchange topology:
+  Exchange: <RABBITMQ_ANNOUNCE_EXCHANGE> (FANOUT, durable)  — configurable
   Queue:    tool-registry.announce (durable, exclusive to this consumer)
 
 Data flow:
-  Service starts → publishes ServiceManifest JSON to pensante.announce
+  Service starts → publishes ServiceManifest JSON to announce exchange
   ↓
   RabbitMQListenerPlugin receives message
   ↓
@@ -37,12 +34,11 @@ from app.registration.base import RegistrationPlugin
 
 logger = logging.getLogger(__name__)
 
-EXCHANGE_ANNOUNCE = "pensante.announce"
 QUEUE_NAME = "tool-registry.announce"
 
 
 class RabbitMQListenerPlugin(RegistrationPlugin):
-    """Auto-discovers services via the pensante.announce RabbitMQ exchange."""
+    """Auto-discovers services via a configurable RabbitMQ fanout exchange."""
 
     def __init__(self):
         self._on_register: Callable | None = None
@@ -60,13 +56,18 @@ class RabbitMQListenerPlugin(RegistrationPlugin):
         self._on_register = on_register
         self._on_deregister = on_deregister
 
-        logger.info("RabbitMQListenerPlugin connecting to %s", settings.rabbitmq_url)
+        exchange_name = settings.rabbitmq_announce_exchange
+        logger.info(
+            "RabbitMQListenerPlugin connecting to %s (exchange=%s)",
+            settings.rabbitmq_url,
+            exchange_name,
+        )
         self._connection = await aio_pika.connect_robust(settings.rabbitmq_url)
         self._channel = await self._connection.channel()
 
         # Declare the announce exchange (must match the one services use)
         exchange = await self._channel.declare_exchange(
-            EXCHANGE_ANNOUNCE,
+            exchange_name,
             ExchangeType.FANOUT,
             durable=True,
         )
@@ -81,7 +82,7 @@ class RabbitMQListenerPlugin(RegistrationPlugin):
         await queue.consume(self._on_announce)
         logger.info(
             "RabbitMQListenerPlugin listening for service announcements on '%s'",
-            EXCHANGE_ANNOUNCE,
+            exchange_name,
         )
 
     async def stop(self) -> None:

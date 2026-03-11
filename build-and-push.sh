@@ -2,7 +2,8 @@
 set -e
 cd "$(dirname "$0")"
 
-IMAGE="registry.gitlab.com/pensante1/tool-registry"
+# Override IMAGE via env var or edit this default for your registry
+IMAGE="${TOOL_REGISTRY_IMAGE:-registry.gitlab.com/pensante1/tool-registry}"
 
 # Load credentials from parent .env if it exists
 if [ -f "../.env" ]; then

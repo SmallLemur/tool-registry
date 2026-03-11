@@ -2,7 +2,7 @@
 
 Registration plugins handle service auto-discovery.
 The default plugin (http_push) relies on services POSTing to /api/v1/register.
-The RabbitMQ plugin listens on the pensante.announce exchange for manifests.
+The RabbitMQ plugin listens on a configurable fanout exchange for manifests.
 
 Both plugins call the same on_register/on_deregister callbacks, keeping the
 RegistryManager independent of how services are discovered.

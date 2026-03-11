@@ -1,7 +1,7 @@
 [project]
 name = "tool-registry"
 version = "0.1.0"
-description = "Semantic capability index for Pensante services"
+description = "Semantic capability index for microservices — register capabilities, search by intent"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi==0.115.6",

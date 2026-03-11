@@ -14,7 +14,7 @@ After a restart, all capabilities are searchable but marked 'stale' until
 services re-announce (within 60 seconds, since services heartbeat every 60s).
 
 Auto-discovery workflow:
-  Service starts → announces via RabbitMQ pensante.announce fanout
+  Service starts → announces via RabbitMQ fanout exchange
     ↓ (first time or changed manifest)
     compute SHA-256 fingerprint → fingerprint differs → FULL RE-INDEX
       → for each action: build search_text → embed → upsert_batch in Milvus

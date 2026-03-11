@@ -1,6 +1,6 @@
-# Tool Registry — Semantic capability index for Pensante services
+# Tool Registry — Semantic capability index for microservices
 # Indexes service capabilities as vectors in Milvus for semantic search.
-# Services auto-discover via RabbitMQ announce exchange.
+# Services register via RabbitMQ announce exchange or direct HTTP POST.
 
 FROM python:3.12-slim
 

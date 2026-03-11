@@ -15,7 +15,7 @@ class RegistrySettings(BaseSettings):
     registry_port: int = 8014
 
     # -- Milvus vector store ----
-    milvus_host: str = "pensante-milvus"
+    milvus_host: str = "milvus"
     milvus_port: int = 19530
     milvus_collection: str = "tool_capabilities"
 
@@ -42,7 +42,10 @@ class RegistrySettings(BaseSettings):
     registration_plugin: str = "rabbitmq_listener"
 
     # RabbitMQ (used by rabbitmq_listener plugin)
-    rabbitmq_url: str = "amqp://pensante:pensante@pensante-rabbitmq:5672/"
+    rabbitmq_url: str = "amqp://guest:guest@rabbitmq:5672/"
+    # Exchange name that services publish their manifests to.
+    # Must match the exchange your services announce on.
+    rabbitmq_announce_exchange: str = "tool-registry.announce"
 
     # HTTP push plugin — outbound health polling
     http_heartbeat_interval_s: int = 60  # seconds between polling rounds
