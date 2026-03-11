@@ -14,6 +14,9 @@ dependencies = [
     "aio-pika==9.5.4",
 ]
 
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
