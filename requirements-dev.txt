@@ -1,0 +1,6 @@
+# Minimal deps for unit tests. Imports pure-logic helpers from registry_manager
+# which touch app.config and app.core.capability_store (small, no heavy deps).
+pytest==8.3.3
+pytest-asyncio==0.24.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
