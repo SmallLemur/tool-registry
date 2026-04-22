@@ -25,12 +25,56 @@ Dimension change workflow:
   auditable rather than silently failing at startup.
 """
 
+import asyncio
 import logging
 from typing import Callable
 
-from pymilvus import AsyncMilvusClient, DataType, MilvusException
+from pymilvus import AsyncMilvusClient, DataType, MilvusClient, MilvusException
 
 logger = logging.getLogger(__name__)
+
+
+def _sync_uri(async_client: AsyncMilvusClient) -> str:
+    """Extract the broker URI from an AsyncMilvusClient.
+
+    pymilvus 2.5.x stores it in `_using` prefixed with 'async-'; strip that.
+    """
+    raw = getattr(async_client, "_using", "")
+    return raw[len("async-"):] if raw.startswith("async-") else raw
+
+
+async def _collection_exists(
+    async_client: AsyncMilvusClient, collection_name: str
+) -> bool:
+    """Check collection existence via the sync MilvusClient (pymilvus 2.5.x's
+    AsyncMilvusClient doesn't expose has_collection yet). Runs in a worker
+    thread so we don't block the event loop during startup."""
+    uri = _sync_uri(async_client)
+
+    def _check() -> bool:
+        sync_client = MilvusClient(uri=uri)
+        try:
+            return sync_client.has_collection(collection_name)
+        finally:
+            sync_client.close()
+
+    return await asyncio.to_thread(_check)
+
+
+async def _describe_collection(
+    async_client: AsyncMilvusClient, collection_name: str
+) -> dict:
+    """Describe via the sync client (same gap as _collection_exists)."""
+    uri = _sync_uri(async_client)
+
+    def _describe() -> dict:
+        sync_client = MilvusClient(uri=uri)
+        try:
+            return sync_client.describe_collection(collection_name)
+        finally:
+            sync_client.close()
+
+    return await asyncio.to_thread(_describe)
 
 # -- Index / search parameters ----
 
@@ -64,10 +108,10 @@ async def _m001_create_tool_capabilities(
     MILVUS_COLLECTION name. This is intentional — silent data corruption
     (mismatched dims silently truncated) is worse than a loud startup failure.
     """
-    exists = await client.has_collection(collection_name)
+    exists = await _collection_exists(client, collection_name)
     if exists:
         # Validate that the stored dimension matches what we expect.
-        desc = await client.describe_collection(collection_name)
+        desc = await _describe_collection(client, collection_name)
         vec_field = next(
             (f for f in desc["fields"] if f["type"] == DataType.FLOAT_VECTOR),
             None,

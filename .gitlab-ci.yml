@@ -2,6 +2,7 @@
 #
 # Stages:
 #   lint  — syntax-check all Python files (fast, no deps)
+#   test  — run unit tests (pytest)
 #   build — verify the Docker image builds successfully
 #   push  — tag and push to the GitLab container registry (main branch only)
 #
@@ -21,6 +22,7 @@ image: python:3.12-slim
 
 stages:
   - lint
+  - test
   - build
   - push
 
@@ -33,6 +35,19 @@ lint:python:
       echo "Syntax-checking all Python files..."
       find app -name "*.py" | xargs python -m py_compile
       echo "All files OK"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+# -- Test ---------------------------------------------------------------
+# Runs the unit test suite. Registry_helpers tests skip when pymilvus isn't
+# installed; reranker tests run against only pytest + stdlib deps.
+
+test:pytest:
+  stage: test
+  script:
+    - pip install --no-cache-dir -r requirements-dev.txt
+    - pytest -q
   rules:
     - if: '$CI_PIPELINE_SOURCE == "push"'
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'

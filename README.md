@@ -288,6 +288,21 @@ uvicorn app.main:app --host 0.0.0.0 --port 8014 --reload
 docker build -t tool-registry .
 ```
 
+## Test
+
+```bash
+pip install -r requirements-dev.txt
+pytest -q
+```
+
+10 unit tests cover the reranker's `_apply_ranking` helper (ordering, dedup,
+score decay, missing/out-of-range index handling, limit truncation).
+`test_registry_helpers.py` skips when `pymilvus` isn't installed — Python 3.14
+has no wheels yet; CI with Python 3.12 runs them.
+
+End-to-end coverage (registration via RabbitMQ, semantic search) lives in
+the repo-root smoke suite at `../tests/smoke/`.
+
 ## License
 
 MIT
